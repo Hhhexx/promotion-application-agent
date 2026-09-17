@@ -14,11 +14,20 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
+from app.orchestrator import pipeline
 from app.repositories import decision_repo
+from app.repositories.memory_store import STORE
 from support import anomaly_by_code
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: CSV 导出锁定契约（顺序即列序，不得随意增删/换位）。
 LOCKED_CSV_FIELDS = [
@@ -141,3 +150,134 @@ class TestDecisionLogSessionIsolation:
         )
         anomaly_ids = {e["anomaly_id"] for e in response.json()}
         assert "anm_other_request_01" not in anomaly_ids
+
+
+# --------------------------------------------------------------------------- #
+# 对抗性验证：隔离不能修过头 / 落盘档案不能改坏 / 过滤必须精确匹配
+# --------------------------------------------------------------------------- #
+def _parse(client, table_id: str, raw_text: str) -> dict:
+    response = client.post(
+        "/api/v1/requests/parse", json={"raw_text": raw_text, "table_id": table_id}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def _export_json(client, request_id: str) -> list:
+    response = client.get(
+        f"/api/v1/requests/{request_id}/decisions", params={"format": "json"}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _resolve(client, request_id: str, anomaly_id: str):
+    return client.post(
+        f"/api/v1/requests/{request_id}/resolutions",
+        json={"anomaly_id": anomaly_id, "decision": "accept", "operator": "qa", "note": "对抗验证"},
+    )
+
+
+class TestIsolationIsNotOverzealous:
+    """方向 2/3：隔离不能把本会话记录也滤掉，也不能缓存截断。"""
+
+    def test_all_session_decisions_remain_visible(self, client, table_id, advance_text):
+        parsed = _parse(client, table_id, advance_text)
+        request_id = parsed["request_id"]
+        _seed_stale_entry(request_id)  # 制造同名陈旧记录
+
+        live_ids = []
+        for code in ("COUNT_MISMATCH", "DATE_ORDER_INVALID"):
+            anomaly = anomaly_by_code(parsed, code)
+            assert _resolve(client, request_id, anomaly["anomaly_id"]).status_code == 200
+            live_ids.append(anomaly["anomaly_id"])
+
+        seen = {e["anomaly_id"] for e in _export_json(client, request_id)}
+        assert set(live_ids) <= seen, f"本会话裁决被误过滤：seen={seen} want>={live_ids}"
+        assert STALE_ANOMALY_ID not in seen, f"陈旧记录又回流：{seen}"
+
+    def test_export_grows_as_decisions_appended(self, client, table_id, advance_text):
+        parsed = _parse(client, table_id, advance_text)
+        request_id = parsed["request_id"]
+
+        first = anomaly_by_code(parsed, "COUNT_MISMATCH")["anomaly_id"]
+        assert _resolve(client, request_id, first).status_code == 200
+        n_first = len(_export_json(client, request_id))
+
+        second = anomaly_by_code(parsed, "DATE_ORDER_INVALID")["anomaly_id"]
+        assert _resolve(client, request_id, second).status_code == 200
+        n_second = len(_export_json(client, request_id))
+
+        assert n_second == n_first + 1, f"导出未随裁决增长（疑似缓存截断）：{n_first} -> {n_second}"
+
+    def test_prefix_similar_request_ids_do_not_leak(self, client, table_id):
+        """方向 6：过滤是精确匹配而非前缀匹配（..._01 vs ..._01_c15 / ..._01x）。"""
+        STORE.decision_log.extend(
+            [
+                {"request_id": "req_x_01", "anomaly_id": "am_exact"},
+                {"request_id": "req_x_01_c15", "anomaly_id": "am_prefix"},
+                {"request_id": "req_x_01x", "anomaly_id": "am_suffix"},
+            ]
+        )
+        got = pipeline.list_decisions("req_x_01")
+        assert [e["anomaly_id"] for e in got] == ["am_exact"], got
+
+
+_SESSION_SCRIPT = '''
+import sys
+from pathlib import Path
+from fastapi.testclient import TestClient
+from app.main import app
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+with TestClient(app) as c:
+    tid = c.post("/api/v1/account-tables").json()["data"]["table_id"]
+    parsed = c.post("/api/v1/requests/parse",
+                    json={"raw_text": text, "table_id": tid}).json()["data"]
+    rid = parsed["request_id"]
+    for code in ("COUNT_MISMATCH", "DATE_ORDER_INVALID"):
+        a = next(x for x in parsed["anomalies"] if x["code"] == code)
+        r = c.post(f"/api/v1/requests/{rid}/resolutions",
+                   json={"anomaly_id": a["anomaly_id"], "decision": "accept", "operator": "qa"})
+        assert r.status_code == 200, r.text
+print("RID=" + rid)
+'''
+
+
+class TestDiskArchiveAcrossSessions:
+    """方向 5：落盘 JSONL 仍是 append-only 全量档案（带 session_id），不被隔离修复改坏。"""
+
+    def test_jsonl_is_append_only_full_archive_with_session_id(self, workdir, advance_text):
+        sample = workdir / "advance.txt"
+        sample.write_text(advance_text, encoding="utf-8")
+        runner = workdir / "session_runner.py"
+        runner.write_text(_SESSION_SCRIPT, encoding="utf-8")
+        data_dir = workdir / "session-data"
+        env = {**os.environ, "MST_DATA_DIR": str(data_dir), "PYTHONPATH": str(REPO_ROOT)}
+
+        request_ids = []
+        for _ in range(2):  # 两个独立进程 = 两个会话
+            result = subprocess.run(
+                [sys.executable, str(runner), str(sample)],
+                cwd=str(REPO_ROOT), env=env, capture_output=True, text=True,
+            )
+            assert result.returncode == 0, result.stderr
+            rid_lines = [ln for ln in result.stdout.splitlines() if ln.startswith("RID=")]
+            assert rid_lines, f"子进程未输出 request_id：{result.stdout!r}\n{result.stderr!r}"
+            request_ids.append(rid_lines[-1][len("RID="):])
+
+        log_path = data_dir / "decisions" / "decisions.jsonl"
+        records = [
+            json.loads(ln)
+            for ln in log_path.read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
+
+        assert len(records) >= 4, f"落盘档案条数不足（append-only 被破坏）：{len(records)}"
+        session_ids = {r.get("session_id") for r in records}
+        assert None not in session_ids, f"落盘记录缺 session_id：{session_ids}"
+        assert len(session_ids) >= 2, f"两会话 session_id 未区分：{session_ids}"
+
+        assert request_ids[0] == request_ids[1], f"两会话未撞号，测试前提不成立：{request_ids}"
+        same_rid = [r for r in records if r["request_id"] == request_ids[0]]
+        assert len(same_rid) >= 4, f"同名 request_id 的跨会话记录被丢弃：{len(same_rid)}"

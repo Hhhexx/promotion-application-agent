@@ -8,12 +8,7 @@ from __future__ import annotations
 from datetime import date as date_cls
 from pathlib import Path
 
-from app.core.config import (
-    DEFAULT_SOURCE_TABLE,
-    TEST_COPY_DIR,
-    UPLOAD_DIR,
-    ensure_dirs,
-)
+from app.core import config
 from app.core.logging import log_event
 from app.domain.enums import AnomalyCode, ItemState
 from app.domain.errors import (
@@ -23,7 +18,6 @@ from app.domain.errors import (
     ValidationError,
 )
 from app.domain.models import (
-    AccountTableDetail,
     AccountTableMeta,
     CommitResult,
     DailyReport,
@@ -38,7 +32,6 @@ from app.llm.llm_adapter import reset_adapter
 from app.parsers.base import parse_request
 from app.repositories.memory_store import STORE, MemoryStore, TableRecord
 from app.repositories.xlsx_repository import (
-    TableSnapshot,
     XlsxRepository,
     copy_test_copy,
     utc_now_iso,
@@ -49,6 +42,12 @@ from app.validators.anomaly_rules import AnomalyFactory
 from app.validators.engine import validate
 from app.orchestrator import review_gate
 from app.orchestrator.review_gate import apply_item_states, open_blockers
+from app.orchestrator.table_service import (
+    default_table_id,
+    require_table,
+    table_detail,
+    table_snapshot,
+)
 from app.orchestrator.write_plan import confirmed_by, has_batch_decision, plan_writes
 
 
@@ -57,20 +56,20 @@ def _store() -> MemoryStore:
 
 
 # --------------------------------------------------------------------------- #
-# 账号表
+# 账号表（登记即复制副本；只读读取见 table_service）
 # --------------------------------------------------------------------------- #
 def register_table(
     source_path: str | Path | None = None,
     filename: str | None = None,
 ) -> AccountTableMeta:
     """登记账号表：**复制为测试副本**，源表只读（架构 §3.2）。"""
-    ensure_dirs()
+    config.ensure_dirs()
     store = _store()
-    source = Path(source_path) if source_path else DEFAULT_SOURCE_TABLE
+    source = Path(source_path) if source_path else config.DEFAULT_SOURCE_TABLE
     if not source.exists():
         raise ValidationError(f"账号表源文件不存在：{source}")
     table_id = f"tbl_copy_{store.next_seq('table'):02d}"
-    copy_path = TEST_COPY_DIR / f"{table_id}__{source.stem}（测试副本）.xlsx"
+    copy_path = config.TEST_COPY_DIR / f"{table_id}__{source.stem}（测试副本）.xlsx"
     copy_test_copy(source, copy_path)
     repo = XlsxRepository(copy_path)
     snapshot = repo.snapshot()
@@ -93,46 +92,21 @@ def register_uploaded_table(filename: str | None, payload: bytes) -> AccountTabl
     入口层只负责把文件名与字节流转交过来；**落盘属于本层职责**
     （路由不直接碰文件系统，见代码组织规范 §1）。
     """
-    ensure_dirs()
+    config.ensure_dirs()
     stem = Path(filename or "uploaded.xlsx").stem or "uploaded"
-    staged = UPLOAD_DIR / f"{stem}.xlsx"
+    staged = config.UPLOAD_DIR / f"{stem}.xlsx"
     staged.write_bytes(payload)
     return register_table(source_path=staged, filename=filename)
 
 
-def table_detail(table_id: str) -> AccountTableDetail:
-    record = _require_table(table_id)
-    repo = XlsxRepository(record.copy_path)
-    snapshot = repo.snapshot()
-    meta = record.meta
-    return AccountTableDetail(
-        **meta.model_dump(),
-        columns=snapshot.columns,
-        rows=[{"row_ref": r.row_ref, **{k: _jsonable(v) for k, v in r.values.items()}} for r in snapshot.rows],
-        empty_row_refs=snapshot.empty_row_refs,
-    )
-
-
-def table_snapshot(table_id: str | None = None) -> TableSnapshot:
-    """读取账号表快照（用于裁决时重跑字段冲突校验）。未指定则用当前默认表。"""
-    store = _store()
-    record = _require_table(table_id) if table_id else store.default_table()
-    if record is None:
-        raise NotFoundError("尚未登记账号表")
-    return XlsxRepository(record.copy_path).snapshot()
-
-
-def _require_table(table_id: str):
-    record = _store().get_table(table_id)
-    if record is None:
-        raise NotFoundError(f"账号表 {table_id} 未登记")
+def auto_register_default() -> TableRecord:
+    """未显式上传时自动登记仓库自带的测试用账号表。"""
+    if not config.DEFAULT_SOURCE_TABLE.exists():
+        raise NotFoundError("尚未登记账号表，且仓库内无默认测试表")
+    register_table()
+    record = _store().default_table()
+    assert record is not None
     return record
-
-
-def _jsonable(value):
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
 
 
 # --------------------------------------------------------------------------- #
@@ -146,9 +120,9 @@ def parse_into_request(
 ) -> ParseResult:
     """解析 + 校验。存在 P0 时批次进入 NEEDS_REVIEW 并禁止写表。"""
     store = _store()
-    record = _require_table(table_id) if table_id else store.default_table()
+    record = require_table(table_id) if table_id else store.default_table()
     if record is None:
-        record = _auto_register_default()
+        record = auto_register_default()
     if enable_llm:
         reset_adapter()
     parsed = parse_request(raw_text, biz_type_hint)
@@ -177,27 +151,11 @@ def parse_into_request(
     return result
 
 
-def _auto_register_default() -> TableRecord:
-    """未显式上传时自动登记仓库自带的测试用账号表。"""
-    if not DEFAULT_SOURCE_TABLE.exists():
-        raise NotFoundError("尚未登记账号表，且仓库内无默认测试表")
-    register_table()
-    record = _store().default_table()
-    assert record is not None
-    return record
-
-
 def get_request(request_id: str) -> ParseResult:
     result = _store().get_request(request_id)
     if result is None:
         raise NotFoundError(f"请求 {request_id} 不存在")
     return result
-
-
-def default_table_id() -> str:
-    """当前默认账号表 id（未登记时返回空串）。入口层据此给写表端点兜底。"""
-    record = _store().default_table()
-    return record.meta.table_id if record else ""
 
 
 def resolve_anomaly(request_id: str, payload: ResolutionInput) -> ResolutionResult:
@@ -222,7 +180,7 @@ def commit_request(request_id: str, table_id: str) -> CommitResult:
     """
     store = _store()
     result = get_request(request_id)
-    record = _require_table(table_id)
+    record = require_table(table_id)
     # 行号（row_ref）只在「解析时所用的那张表」上有意义。
     # 若允许换表写表，就会把 A 表的行号写到 B 表的同名行上——契约破坏。
     if result.table_id and result.table_id != table_id:

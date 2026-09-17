@@ -10,7 +10,7 @@ import io
 import json
 from pathlib import Path
 
-from app.core.config import DECISION_LOG, ensure_dirs
+from app.core import config
 from app.core.logging import log_event
 
 CSV_FIELDS = [
@@ -30,8 +30,8 @@ CSV_FIELDS = [
 
 def append_entry(entry: dict, path: Path | None = None) -> None:
     """追加一条裁决记录到 JSONL。"""
-    ensure_dirs()
-    target = path or DECISION_LOG
+    config.ensure_dirs()
+    target = path or config.DECISION_LOG
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -39,7 +39,7 @@ def append_entry(entry: dict, path: Path | None = None) -> None:
 
 
 def read_entries(path: Path | None = None) -> list[dict]:
-    target = path or DECISION_LOG
+    target = path or config.DECISION_LOG
     if not target.exists():
         return []
     out: list[dict] = []

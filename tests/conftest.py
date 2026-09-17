@@ -28,8 +28,6 @@ for _p in (str(ROOT), str(TESTS_DIR)):
 
 from app.core import config  # noqa: E402
 from app.llm import llm_adapter  # noqa: E402
-from app.orchestrator import pipeline  # noqa: E402
-from app.repositories import decision_repo  # noqa: E402
 from app.repositories.memory_store import STORE  # noqa: E402
 from app.repositories.xlsx_repository import XlsxRepository  # noqa: E402
 
@@ -61,16 +59,15 @@ def clean_state(monkeypatch, artifact_root):
     for path in (copies, uploads, decisions.parent):
         path.mkdir(parents=True, exist_ok=True)
 
-    # 把「写盘产物」重定向到临时目录：源表与仓库 data/ 全程只读。
-    # 生产代码另提供 `MST_DATA_DIR` 环境变量做整体重定向（见 app/core/config.py），
-    # 但那是**会话级**的（DATA_DIR 在 import 时求值）；这里逐测试再分目录并直接
-    # 覆盖模块属性，取的是**每例隔离**，与 import 顺序无关。
+    # **唯一接缝：只 patch `config.*`。**
+    # 与后端约定的契约是「任何模块都不得持有 import 期副本」——使用点一律读 `config.X`，
+    # 因此覆盖这三处 config 属性即可重定向**全部**运行期落盘。
+    # （历史教训：以前逐个 patch 持有副本的模块（pipeline / decision_repo），
+    #  重构一搬家就静默失效、且崩在 setup 看起来像"测试全挂"。行为级护栏见
+    #  tests/test_isolation_guard.py::test_real_write_lands_in_temp_dir_and_repo_data_untouched。）
     monkeypatch.setattr(config, "TEST_COPY_DIR", copies)
     monkeypatch.setattr(config, "UPLOAD_DIR", uploads)
     monkeypatch.setattr(config, "DECISION_LOG", decisions)
-    monkeypatch.setattr(pipeline, "TEST_COPY_DIR", copies)
-    monkeypatch.setattr(pipeline, "UPLOAD_DIR", uploads)
-    monkeypatch.setattr(decision_repo, "DECISION_LOG", decisions)
 
     STORE.reset()
     llm_adapter.reset_adapter()

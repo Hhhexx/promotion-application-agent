@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.domain.enums import AnomalyCode, Severity
+from app.domain.enums import AnomalyCode
 from app.domain.models import Anomaly, CrossCheck, LineItem
 from app.parsers.base import ParsedRequest, amount_of
 from app.parsers.normalizer import build_dedup_key, format_money, normalize_name, to_decimal
-from app.repositories.xlsx_repository import SheetRow
-from app.validators.anomaly_rules import AnomalyFactory, _money
+from app.validators.anomaly_rules import AnomalyFactory
 from app.validators.matcher import SheetIndex
+from app.validators.scope_rules import emit_scope_mismatch, sheet_column_sum
 
 ZERO = Decimal("0.00")
 
@@ -24,20 +24,6 @@ TEXT_FIELD_TO_SHEET: dict[str, dict[str, str]] = {
     "doujia": {"doujia_amount": "抖加", "doujia_payer": "抖加支付人"},
     "advance": {"payer": "打款人"},
 }
-
-
-def _sheet_column_sum(rows: list[SheetRow], key: str) -> tuple[Decimal, list[str]]:
-    total = ZERO
-    owners: list[str] = []
-    for row in rows:
-        value = _money(row.values.get(key))
-        if value is None or value == 0:
-            continue
-        total += value
-        name = row.text("douyin_nickname")
-        if name:
-            owners.append(name)
-    return total, owners
 
 
 def _declared_total(parsed: ParsedRequest) -> Decimal:
@@ -161,7 +147,7 @@ def _cross_source_checks(
     sheet_sum: Decimal | None = None
 
     if biz == "doujia":
-        sheet_sum, sheet_owners = _sheet_column_sum(index.rows, "doujia_amount")
+        sheet_sum, sheet_owners = sheet_column_sum(index.rows, "doujia_amount")
         text_owners = [i.blogger_name_raw for i in items]
         if parsed.declared_total is not None and sheet_sum != parsed.declared_total:
             diff = abs(parsed.declared_total - sheet_sum)
@@ -178,12 +164,12 @@ def _cross_source_checks(
                     evidence_note="账号表「抖加」列无批次/日期维度，该等式无法验证，故定档 P1 不阻断",
                 )
             )
-        _emit_scope_mismatch(
+        emit_scope_mismatch(
             factory, out, "博主集合", text_owners, sheet_owners, "xsrc.scope", "doujia_amount"
         )
         sheet_payers = sorted({r.text("doujia_payer") for r in index.rows if r.text("doujia_payer")})
         if parsed.payer_raw and sheet_payers and parsed.payer_raw not in sheet_payers:
-            _emit_scope_mismatch(
+            emit_scope_mismatch(
                 factory,
                 out,
                 "抖加支付人口径",
@@ -195,7 +181,7 @@ def _cross_source_checks(
     else:
         paid_rows = [r for r in index.rows if r.text("payer")]
         sheet_owners = [r.text("douyin_nickname") for r in paid_rows if r.text("douyin_nickname")]
-        _emit_scope_mismatch(
+        emit_scope_mismatch(
             factory,
             out,
             "博主集合（对比台账已登记打款人的行）",
@@ -206,7 +192,7 @@ def _cross_source_checks(
         )
         sheet_payers = sorted({r.text("payer") for r in paid_rows})
         if parsed.payer_raw and sheet_payers and parsed.payer_raw not in sheet_payers:
-            _emit_scope_mismatch(
+            emit_scope_mismatch(
                 factory,
                 out,
                 "打款人口径",
@@ -218,40 +204,6 @@ def _cross_source_checks(
 
     out.extend(_field_conflicts(factory, parsed.biz_type.value, parsed.payer_raw, items, index))
     return sheet_sum, out
-
-
-def _emit_scope_mismatch(
-    factory: AnomalyFactory,
-    out: list[Anomaly],
-    label: str,
-    text_values: list[str],
-    sheet_values: list[str],
-    rule_id: str,
-    field: str,
-) -> None:
-    """两级集合差异 → P1。**不同博主/不同行的差异不得升格为 P0 字段冲突。**"""
-    if set(text_values) == set(sheet_values):
-        return
-    only_text = sorted(set(text_values) - set(sheet_values))
-    only_sheet = sorted(set(sheet_values) - set(text_values))
-    parts = []
-    if only_text:
-        parts.append(f"仅文本有：{'、'.join(only_text)}")
-    if only_sheet:
-        parts.append(f"仅台账有：{'、'.join(only_sheet)}")
-    out.append(
-        factory.make(
-            AnomalyCode.CROSS_SOURCE_SCOPE_MISMATCH,
-            f"文本与账号表的{label}不一致（{'；'.join(parts)}）",
-            rule_id=rule_id,
-            severity=Severity.P1,
-            target_field=field,
-            text_value="、".join(text_values),
-            sheet_value="、".join(sheet_values),
-            action_required="需运营确认台账与文本的覆盖范围口径",
-            evidence_note="两侧范围不同不等于同一字段取值冲突，故不升格为 P0",
-        )
-    )
 
 
 def _field_conflicts(
