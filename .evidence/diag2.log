@@ -1,0 +1,23 @@
+✓ Done
+### 探针：事件路径 + 网络
+✓ Done
+-- 选中的异常: anm_01
+-- accept 按钮存在: 1
+-- accept disabled: false
+-- #op 存在: 1   #reason 存在: 1  #target 存在: 1
+✓ Done
+-- 事件命中: [\"capture:HTML#\",\"capture:HTML#\"]
+-- 未处理拒绝: []
+-- toast: <>
+-- resolved-box: <尚无已裁决记录。>
+-- 网络请求: 
+No requests captured
+-- 页面错误: 
+
+### 对照：同一套委托机制的 #counts 计数按钮
+✓ Done
+-- 事件命中: [\"capture:HTML#\",\"capture:HTML#\",\"capture:HTML#\"]
+
+### 对照：直接用 DOM 调用 UI.toast，确认 toast 可用
+✓ Done
+-- toast: <探针测试 toast>

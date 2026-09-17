@@ -1,0 +1,27 @@
+exit=0
+### root top-level after cleanup ###
+.
+..
+.evidence
+.gitignore
+.probe
+.pytest_cache
+.verify.txt
+.workbuddy
+README.md
+app
+data
+delivery
+docs
+pytest.ini
+requirements.txt
+tests
+tools
+web
+要求和交付物.md
+题目物料.md
+### root png remaining ###
+ls: cannot access '*.png': No such file or directory
+### .probe / .evidence exist? ###
+.evidence
+.probe

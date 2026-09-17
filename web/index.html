@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>推广申请处理台 · 抖加与垫付申请入账核对</title>
+<link rel="stylesheet" href="/static/design-tokens.css" />
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <div class="brand">
+      <span>推广申请处理台</span>
+      <small>《你是我的仰望》推广台账 · 抖加与垫付申请核对</small>
+    </div>
+    <span class="promise" id="copy-promise">
+      <i data-lucide="flask-conical" data-size="16"></i>
+      测试副本 · 未污染原表
+    </span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="btn-theme" type="button">
+      <i data-lucide="moon" data-size="16"></i><span id="theme-label">深色</span>
+    </button>
+    <button class="icon-btn" id="btn-help" type="button">
+      <i data-lucide="circle-help" data-size="16"></i>口径说明
+    </button>
+  </div>
+  <div class="container">
+    <nav class="stepper" id="stepper" aria-label="流程进度"></nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- 区块 1：输入 -->
+  <section class="block" id="block-input">
+    <div class="block-head">
+      <h2><i data-lucide="scan-text" data-size="20"></i>申请文本</h2>
+      <span class="hint">粘贴群里收到的《抖加金额统计》或《垫付统计》原文</span>
+      <span class="spacer"></span>
+      <div class="tabs" role="tablist" id="biz-tabs">
+        <button class="tab" role="tab" data-biz="doujia" aria-selected="true">抖加申请</button>
+        <button class="tab" role="tab" data-biz="advance" aria-selected="false">垫付申请</button>
+      </div>
+    </div>
+    <div class="block-body">
+      <div class="input-grid">
+        <div>
+          <label class="sr-only" for="raw-text">申请文本</label>
+          <textarea id="raw-text" spellcheck="false" placeholder="粘贴申请总结原文，包含【抖加金额统计】或【垫付统计】表头与「明细如下：」段落"></textarea>
+          <div class="toolbar">
+            <button class="btn btn-primary" id="btn-parse" type="button">
+              <i data-lucide="scan-text" data-size="20"></i>解析并校验
+            </button>
+            <button class="btn" id="btn-sample" type="button">
+              <i data-lucide="clipboard-paste" data-size="16"></i>填充示例
+            </button>
+            <button class="btn" id="btn-upload" type="button">
+              <i data-lucide="upload" data-size="16"></i>上传文本文件
+            </button>
+            <input type="file" id="file-input" accept=".txt,.md,text/plain" class="sr-only" />
+            <button class="btn" id="btn-clear" type="button">
+              <i data-lucide="eraser" data-size="16"></i>清空
+            </button>
+          </div>
+          <p class="fold-note" id="input-status">未输入。可点「填充示例」快速载入物料中的两份申请原文。</p>
+        </div>
+        <aside class="side-note">
+          <div><strong>系统承诺</strong></div>
+          <div>对缺失或冲突的字段<strong>不做任何默认填充</strong>，一律留空并标记，交由人工裁决。</div>
+          <div>解析只做模板抽取与归一化，<strong>不推断金额、笔数、日期、支付人</strong>。</div>
+          <div>写入只作用于测试副本，原表<strong>只读</strong>。</div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- 区块 2：校验总览 -->
+  <section class="block" id="block-validation">
+    <div class="block-head">
+      <h2><i data-lucide="octagon-alert" data-size="20"></i>校验总览</h2>
+      <span class="hint" id="validation-sub">尚未解析</span>
+      <span class="spacer"></span>
+      <span class="gate-note" id="gate-note"></span>
+      <button class="btn btn-primary" id="btn-commit" type="button" disabled>
+        <i data-lucide="table-2" data-size="20"></i>写入测试副本
+      </button>
+    </div>
+    <div class="block-body overview">
+      <div class="counts" id="counts"></div>
+      <div class="spacer"></div>
+      <div class="side-note" id="request-meta" style="max-width: 420px;"></div>
+    </div>
+  </section>
+
+  <!-- 区块 3：异常裁决工作台 -->
+  <section class="block" id="block-workbench">
+    <div class="block-head">
+      <h2><i data-lucide="gavel" data-size="20"></i>异常裁决工作台</h2>
+      <span class="hint">同一屏完成裁决，不跳转</span>
+    </div>
+    <div class="workbench">
+      <div class="wb-col">
+        <h3><i data-lucide="list-filter" data-size="16"></i>裁决队列</h3>
+        <div class="chips" id="queue-chips"></div>
+        <ul class="queue" id="queue"></ul>
+      </div>
+      <div class="wb-col" id="evidence-col">
+        <h3><i data-lucide="quote" data-size="16"></i>证据</h3>
+        <div id="evidence"></div>
+      </div>
+      <div class="wb-col">
+        <h3><i data-lucide="user-round-check" data-size="16"></i>裁决动作</h3>
+        <div class="actions" id="actions"></div>
+        <div class="promise-line">
+          <i data-lucide="shield-check" data-size="16"></i>
+          <span>系统不对缺失 / 冲突字段做任何默认猜测。</span>
+        </div>
+        <div class="resolved-box" id="resolved-box"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 区块 4：当日汇总 -->
+  <section class="block" id="block-summary">
+    <div class="block-head">
+      <h2><i data-lucide="sigma" data-size="20"></i>当日汇总</h2>
+      <span class="hint">三口径并列，不合并为单一数字</span>
+      <span class="spacer"></span>
+      <label class="sr-only" for="summary-date">汇总日期</label>
+      <input id="summary-date" class="num" type="date" value="2026-09-03"
+             style="font-family:var(--font-mono);padding:var(--space-1) var(--space-2);border:var(--border-hairline) solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface-sunken);color:var(--color-fg);" />
+      <button class="btn" id="btn-summary" type="button">
+        <i data-lucide="rotate-ccw" data-size="16"></i>刷新汇总
+      </button>
+    </div>
+    <div class="summary-grid" id="summary-grid"></div>
+    <div class="block-body" id="summary-note"></div>
+  </section>
+
+  <!-- 区块 5：负责人汇报 -->
+  <section class="block" id="block-report">
+    <div class="block-head">
+      <h2><i data-lucide="file-text" data-size="20"></i>负责人汇报</h2>
+      <span class="hint">结论 + 关键数字 + 需决策项</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="btn-report" type="button">
+        <i data-lucide="send" data-size="20"></i>生成汇报
+      </button>
+    </div>
+    <div class="block-body" id="report-host"></div>
+  </section>
+
+  <!-- 区块 6：裁决日志 -->
+  <section class="block" id="block-ledger">
+    <div class="block-head">
+      <h2><i data-lucide="scroll-text" data-size="20"></i>裁决日志与副本</h2>
+      <span class="hint">append-only，可导出 CSV</span>
+      <span class="spacer"></span>
+      <button class="btn" id="btn-csv" type="button" disabled>
+        <i data-lucide="download" data-size="16"></i>导出 CSV
+      </button>
+    </div>
+    <div class="block-body">
+      <div id="ledger-host" class="ledger"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast-host" id="toast-host" aria-live="polite"></div>
+
+<script src="/static/vendor/lucide/lucide.min.js"></script>
+<script src="/static/api.js"></script>
+<script src="/static/ui.js"></script>
+<!-- 视图子文件先加载（提供各渲染函数），views.js 最后加载以一次性聚合出 const Views -->
+<script src="/static/views-worker.js"></script>
+<script src="/static/views-report.js"></script>
+<script src="/static/views.js"></script>
+<!-- 动作层先于 app.js 加载：app.js 执行时经 AppActions.create(ctx) 注入私有 state -->
+<script src="/static/app-actions.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

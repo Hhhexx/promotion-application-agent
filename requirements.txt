@@ -1,0 +1,15 @@
+# 推广申请处理台 — 直接依赖清单
+# 版本均由本机托管环境 `python -m pip freeze` 实测锚定（Python 3.13.14）。
+# 安装：python -m pip install -r requirements.txt
+
+# ---- 运行时依赖（应用启动与业务链路必需） ----
+fastapi==0.141.1          # Web 框架，Pydantic 契约驱动
+uvicorn==0.53.0           # ASGI 服务器
+pydantic==2.13.5          # 请求/响应模型强校验（类型即契约）
+openpyxl==3.1.5           # xlsx 读写，保留原表格式回填
+python-multipart==0.0.32  # FastAPI 处理 UploadFile 表单（缺则调用上传接口报 RuntimeError）
+
+# ---- 测试与校验工具（验证用，运行演示时非必需） ----
+pytest==9.1.1             # 单元测试
+httpx==0.28.1             # fastapi.testclient 依赖（tools/e2e_smoke.py 端到端验证用）
+pyflakes==3.4.0           # 静态扫描未定义名/未使用导入（质量检查用）

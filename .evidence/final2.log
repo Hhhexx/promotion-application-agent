@@ -1,0 +1,201 @@
+### 最终实测 2026-09-17 16:44:23  http://127.0.0.1:8000/
+
+========== STEP 1 · 首屏加载 ==========
+-- 视口 1600x2800 / 文档 2800
+-- 状态栏: 已登记账号表测试副本 tbl_copy_09（15 行有效数据，原表只读）。
+-- page errors: (empty) / console: (empty)
+  截图: .evidence/01-STEP1-首屏.png
+  [PASS] STEP1 无 page errors
+  [PASS] STEP1 无 console 报错
+  [PASS] STEP1 状态栏已登记副本
+  [PASS] STEP1 写入按钮初始 disabled
+
+========== STEP 2 · 抖加示例 → 解析 ==========
+✓ Done
+-- 状态栏: 解析完成：4 条明细，13 项异常（阻断 0 项）。
+-- 总览: 抖加申请　批次 doujia|2026-09-02 申请日 2026-09-02　明细 4 行　声明 7 笔 / 折算 7 笔 明细求和 ¥700.00　声明总额 ¥700.00
+-- 闸门: 无未裁决阻断项，可写入测试副本
+  截图: .evidence/02-STEP2-抖加解析0阻断.png
+  [PASS] STEP2 4 条明细
+  [PASS] STEP2 声明总额 700
+  [PASS] STEP2 0 项阻断
+  [PASS] STEP2 写入按钮变可用
+  [PASS] STEP2 闸门提示可写入
+  [PASS] STEP2 无运行时异常
+
+========== STEP 3 · 写入测试副本 ×2（幂等） ==========
+✓ Done
+-- 副本 id: tbl_copy_09
+-- 账本: 账号表测试副本：tbl_copy_09　 源表只读，服务端复制后写入 上次写入：成功 4 条，跳过 0 条 目标行 去重键 写入字段 2 doujia|2026-09-02|初秋|300.00|爆火音乐 doujia_amount、doujia_payer、remark 3 doujia|2026-09-02|艳红|200.00|爆火音乐 doujia_amount、doujia_payer、remark 4 doujia|2026-09-02|唐山第一女泵工|100.00|爆火音乐 doujia_amount、doujia_payer、remark 5 doujia|2026-09-02|戎大姨|100.00|爆火音乐 doujia_amount、doujia_payer、remark
+  截图: .evidence/03a-STEP3-首次写入4条.png
+  [PASS] STEP3 首次写入成功 4 条
+  快照A已存（rows=15）
+✓ Done
+-- 二次写入账本: 账号表测试副本：tbl_copy_09　 源表只读，服务端复制后写入 上次写入：成功 0 条，跳过 4 条 跳过明细： doujia|2026-09-02|初秋|300.00|爆火音乐（SKIPPED_ALREADY_WRITTEN） doujia|2026-09-02|艳红|200.00|爆火音乐（SKIPPED_ALREADY_WRITTEN） doujia|2026-09-02|唐山第一女泵工|100.00|爆火音乐（SKIPPED_ALREADY_WRITTEN） doujia|2026-09-02|戎大姨|100.00|爆火音乐（SKIPPED_ALREADY_WRITTEN）
+  截图: .evidence/03b-STEP3-二次写入幂等.png
+  [PASS] STEP3 二次写入全部跳过
+  [PASS] STEP3 幂等原因 SKIPPED
+  [PASS] 二次写入后表内容逐格不变（15 行）
+
+========== STEP 7a · 当日汇总三口径（抖加） ==========
+-- 网格: [{\"label\":\"抖加合计\",\"value\":\"¥2,100.00\",\"sub\":\"12 笔明细　21 笔声明\",\"rows\":[\"文本声明额=¥2,100.00\",\"明细求和=¥2,100.00\",\"表内该列累计=¥1,200.00\"]},{\"label\":\"垫付合计\",\"value\":\"¥0.00\",\"sub\":\"0 笔明细　— 笔声明\",\"rows\":[\"文本声明额=—\",\"明细求和=—\",\"表内该列累计=—\"]}]
+-- 口径: 抖加合计[总额=¥2,100.00 声明=¥2,100.00 明细求和=¥2,100.00 表内列累计=¥1,200.00 未混入=true] ;; 垫付合计[总额=¥0.00 声明=— 明细求和=— 表内列累计=— 未混入=false]
+  截图: .evidence/04-STEP7a-抖加三口径并列.png
+  [PASS] STEP7a 三口径并列
+  [PASS] STEP7a 总额=明细求和且≠表内列累计
+
+========== STEP 4 · 垫付示例 → 解析（3 阻断 / 闸门关闭） ==========
+✓ Done
+-- 状态栏: 解析完成：5 条明细，15 项异常（阻断 3 项）。
+-- 闸门: 存在 3 项未裁决阻断，写入已禁用
+  截图: .evidence/05-STEP4-垫付解析3阻断闸门灰.png
+  [PASS] STEP4 解析成功（不再报 douyin_nickname）
+  [PASS] STEP4 3 项阻断
+  [PASS] STEP4 写入按钮变灰
+  [PASS] STEP4 闸门提示禁用写入
+  [PASS] STEP4 无运行时异常
+
+========== STEP 5a · 表级异常证据面板（修复前整面板崩） ==========
+✓ Done
+-- 选中: anm_09
+-- 面板标题: 文本侧取值 ;; 账号表 · 第 8 行
+-- 台账行: 字段单元格值类型剧情演绎抖音昵称张栋梁抖音号2098172078报价100抖加200抖加支付人爆火音乐是否打款是打款人木木老师打款日期2026/8/17发布日期4.10是否接单是审核结果过备注（空）
+  截图: .evidence/06-STEP5a-表级异常证据面板扁平行.png
+  [PASS] STEP5a 右栏=台账行号
+  [PASS] STEP5a 台账行取值渲染(张栋梁)
+  [FAIL] STEP5a 台账行多列取值非空
+         实际=<字段单元格值类型剧情演绎抖音昵称张栋梁抖音号2098172078报价100抖加200抖加支付人爆火音乐是否打款是打款人木木老师打款日期2026/8/17发布日期4.10是否接单是审核结果过备注（空）>
+         期望匹配=/2098172078[\s\S]*100[\s\S]*200/
+  [PASS] STEP5a paint 未中断
+  [PASS] STEP5a 无运行时异常
+
+========== STEP 5 · COUNT_MISMATCH / DATE_ORDER_INVALID → 确认无误 ==========
+✓ Done
+✓ Done
+-- toast: <已记录裁决，仍有 2 项阻断待处理。>
+-- 已裁决: 已裁决 1 项EXC-01 · accept · 运营-小林
+  [PASS] STEP5 COUNT_MISMATCH 已裁决
+✓ Done
+✓ Done
+  [PASS] STEP5 DATE_ORDER_INVALID 已裁决
+-- 闸门: 存在 1 项未裁决阻断，写入已禁用
+
+========== STEP 5c · MATCH_AMBIGUOUS：确认无误禁用 + 候选行可读 + 修正为目标行 ==========
+✓ Done
+-- 确认无误 enabled = false（应 false）
+-- 候选下拉:  => 请选择目标行 ;; 7 => 第 7 行 · 葵花夫妇 · 抖音号 LBXXnvzhuang ;; 9 => 第 9 行 · 葵花夫妇 · 抖音号 （空）
+  截图: .evidence/07-STEP5c-歧义候选行可读.png
+  [PASS] STEP5c 确认无误被禁用
+  [PASS] STEP5c 候选行可读(第7行)
+  [PASS] STEP5c 候选行可读(第9行空号)
+-- 已选目标行: 7
+✓ Done
+-- 闸门: 存在 1 项未裁决阻断，写入已禁用
+-- 未决 P0: anm_01_c15
+  截图: .evidence/08-STEP5d-修正为目标行.png
+
+========== STEP 6 · 新出现的 P0（打款人 林老师 vs 木木老师） ==========
+-- 新 P0: anm_01_c15 / 「葵花夫妇」的打款人：文本为「林老师」，台账第 7 行为「木木老师」
+  [FAIL] STEP6 新 P0 为打款人字段冲突
+         实际=<「葵花夫妇」的打款人：文本为「林老师」，台账第 7 行为「木木老师」>
+         期望匹配=/林老师[\s\S]*木木老师/
+✓ Done
+✓ Done
+-- 闸门: 无未裁决阻断项，可写入测试副本
+-- 已裁决: 已裁决 4 项EXC-04 · override · 运营-小林EXC-01 · accept · 运营-小林EXC-02 · accept · 运营-小林EXC-05 · accept · 运营-小林
+  截图: .evidence/09-STEP6-阻断归零后可写入.png
+  [PASS] STEP6 剩余阻断归零
+  [PASS] STEP6 写入按钮恢复可用
+  [PASS] STEP6 裁决累计
+  [PASS] STEP6 无运行时异常
+
+========== STEP 7 · 写入垫付 + 当日汇总（垫付口径） ==========
+✓ Done
+-- 账本: 账号表测试副本：tbl_copy_09　 源表只读，服务端复制后写入 上次写入：成功 5 条，跳过 0 条 目标行 去重键 写入字段 2 advance|2026-09-03|初秋|950.00|林老师 payer、pay_date、remark 3 advance|2026-09-03|艳红|300.00|林老师 payer、pay_date、remark 5 advance|2026-09-03|戎大姨|300.00|林老师 payer、pay_date、remark 6 advance|2026-09-03|高高|200.00|林老师 payer、pay_date、remark 7 advance|2026-09-03|葵花夫妇|500.00|林老师 pay_date、remark 裁决日志（append-only，共 4 条）
+-- 网格: [{\"label\":\"抖加合计\",\"value\":\"¥0.00\",\"sub\":\"0 笔明细　— 笔声明\",\"rows\":[\"文本声明额=—\",\"明细求和=—\",\"表内该列累计=—\"]},{\"label\":\"垫付合计\",\"value\":\"¥9,000.00\",\"sub\":\"20 笔明细　28 笔声明\",\"rows\":[\"文本声明额=¥9,000.00\",\"明细求和=¥9,000.00\",\"表内该列累计=—\"]}]
+-- 口径: 抖加合计[总额=¥0.00 声明=— 明细求和=— 表内列累计=— 未混入=false] ;; 垫付合计[总额=¥9,000.00 声明=¥9,000.00 明细求和=¥9,000.00 表内列累计=— 未混入=true]
+  截图: .evidence/10-STEP7-垫付写入与汇总.png
+  [PASS] STEP7 垫付写入 5 条
+  [FAIL] STEP7 垫付合计 2250
+         实际=<[{\"label\":\"抖加合计\",\"value\":\"¥0.00\",\"sub\":\"0 笔明细　— 笔声明\",\"rows\":[\"文本声明额=—\",\"明细求和=—\",\"表内该列累计=—\"]},{\"label\":\"垫付合计\",\"value\":\"¥9,000.00\",\"sub\":\"20 笔明细　28 笔声明\",\"rows\":[\"文本声明额=¥9,000.00\",\"明细求和=¥9,000.00\",\"表内该列累计=—\"]}]>
+         期望匹配=/垫付合计[\s\S]*?¥2,250\.00/
+  [PASS] STEP7 垫付总额=明细求和≠表内列累计
+
+========== STEP 8 · 生成汇报 + 复制为文本 + 下载 Markdown ==========
+✓ Done
+-- 汇报卡:  当日汇报 · 2026-09-03 垫付 ¥9000.00；存在 3 项阻断待人工确认，未入账。 抖加合计 ¥0.00 垫付合计 ¥9,000.00 已确认金额 ¥6,750.00 待确认金额 ¥2,250.00 阻断 红灯 · 「葵花夫妇」在账号表命中 2 行，无法自动判定写入目标 需运营指定目标行（或说明该博主是否需要新建行） 阻断 红灯 · 文本声明「今日共 7 笔」，明细折算后为 5 笔，缺口 2 笔 需运营确认缺失笔数的性质（数据丢失 / 已合并 / 已撤回） 阻断 红灯 · 预计打款日期 2026-08-31 早于申请日期 2026-09-03，倒挂 3 天 需运营确认该日期是否为跨年写法或历史数据误填 另有 11 项，见裁决工作台。 数据来源：账号表测试副本（未触碰原表）　生成时间 2026-09-17T08:46:46.310425Z 复制为文本 下载 Markdown
+  截图: .evidence/11-STEP8-汇报卡.png
+  [PASS] STEP8 汇报有标题
+  [PASS] STEP8 有结论正文
+  [FAIL] STEP8 已确认/待确认金额并列
+         实际=< 当日汇报 · 2026-09-03 垫付 ¥9000.00；存在 3 项阻断待人工确认，未入账。 抖加合计 ¥0.00 垫付合计 ¥9,000.00 已确认金额 ¥6,750.00 待确认金额 ¥2,250.00 阻断 红灯 · 「葵花夫妇」在账号表命中 2 行，无法自动判定写入目标 需运营指定目标行（或说明该博主是否需要新建行） 阻断 红灯 · 文本声明「今日共 7 笔」，明细折算后为 5 笔，缺口 2 笔 需运营确认缺失笔数的性质（数据丢失 / 已合并 / 已撤回） 阻断 红灯 · 预计打款日期 2026-08-31 早于申请日期 2026-09-03，倒挂 3 天 需运营确认该日期是否为跨年写法或历史数据误填 另有 11 项，见裁决工作台。 数据来源：账号表测试副本（未触碰原表）　生成时间 2026-09-17T08:46:46.310425Z 复制为文本 下载 Markdown>
+         期望匹配=/已确认金额[\s\S]*待确认金额/
+  [FAIL] STEP8 抖加/垫付合计并列
+         实际=< 当日汇报 · 2026-09-03 垫付 ¥9000.00；存在 3 项阻断待人工确认，未入账。 抖加合计 ¥0.00 垫付合计 ¥9,000.00 已确认金额 ¥6,750.00 待确认金额 ¥2,250.00 阻断 红灯 · 「葵花夫妇」在账号表命中 2 行，无法自动判定写入目标 需运营指定目标行（或说明该博主是否需要新建行） 阻断 红灯 · 文本声明「今日共 7 笔」，明细折算后为 5 笔，缺口 2 笔 需运营确认缺失笔数的性质（数据丢失 / 已合并 / 已撤回） 阻断 红灯 · 预计打款日期 2026-08-31 早于申请日期 2026-09-03，倒挂 3 天 需运营确认该日期是否为跨年写法或历史数据误填 另有 11 项，见裁决工作台。 数据来源：账号表测试副本（未触碰原表）　生成时间 2026-09-17T08:46:46.310425Z 复制为文本 下载 Markdown>
+         期望匹配=/抖加合计[\s\S]*垫付合计/
+  [PASS] STEP8 有需决策项
+✓ Done
+-- 剪贴板收到: 【当日汇报 · 2026-09-03】\n结论：垫付 ¥9000.00；存在 3 项阻断待人工确认，未入账。\n\n关键数字\n- 垫付合计 ¥9000.00（20 笔
+-- 即时 toast: <汇报文本已复制，可直接粘贴到群聊。>
+  [PASS] STEP8 复制调到剪贴板 API
+  [PASS] STEP8 复制有成功反馈
+✓ Done
+-- 下载后 page errors: (empty)
+  [PASS] STEP8 复制/下载无未捕获异常
+
+========== STEP 10 · 深浅色切换 ==========
+✓ Done
+-- theme=dark label=浅色 图标=sun
+-- body 前景/背景=rgb(233, 236, 243) / rgb(13, 16, 23)
+  截图: .evidence/12-STEP10-深色模式.png
+  [PASS] STEP10 切到 dark
+  [PASS] STEP10 图标跟随= sun
+  [PASS] STEP10 深色=浅字深底
+✓ Done
+-- theme=light label=深色 图标=moon
+  截图: .evidence/13-STEP10-浅色模式.png
+  [PASS] STEP10 切回 light
+  [PASS] STEP10 图标跟随= moon
+  [PASS] STEP10 浅色=深字浅底
+
+========== STEP 9 · 导出裁决 CSV ==========
+-- 按钮 enabled: true
+✓ Done
+-- window.open: [\"/api/v1/requests/req_20260903_advance_08/decisions?format=csv\"]
+✓ Done
+-- CSV: 200 | text/csv; charset=utf-8 | 行数=5 | 表头=ts,request_id,anomaly_id,rule_id,code,severity,action,original_value,final_value,operator,reason\r
+  截图: .evidence/14-STEP9-导出裁决CSV.png
+  [PASS] STEP9 导出按钮 enabled
+  [PASS] STEP9 调用了 window.open
+  [PASS] STEP9 CSV 200 + text/csv
+  [PASS] STEP9 CSV 有表头非空
+
+========== STEP 12 · 空输入直接解析（友好提示） ==========
+✓ Done
+-- 清空后状态栏: 已清空。
+✓ Done
+-- 状态栏: 尚未输入文本。请粘贴申请原文，或点「填充示例」载入物料原文。
+-- toast: <请先粘贴申请文本，或点「填充示例」载入物料原文。>
+-- page errors: (empty)
+  [PASS] STEP12 友好提示
+  [PASS] STEP12 toast 提示
+  截图: .evidence/15-STEP12-空输入提示.png
+  [PASS] STEP12 不抛异常
+
+===== D) 页内请求流水（状态码，reload 前采集） =====
+200 /api/v1/requests/parse :: {\"code\":0,\"data\":{\"request_id\":\"req_20260902_doujia_07\",\"batch_id\":\"doujia|2026-\n   200 /api/v1/summary?date=2026-09-02 :: {\"code\":0,\"data\":{\"date\":\"2026-09-02\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260902_doujia_07/decisions?format=json :: []\n   200 /api/v1/requests/req_20260902_doujia_07/commit :: {\"code\":0,\"data\":{\"written_count\":4,\"skipped_count\":0,\"written\":[{\"dedup_key\":\"d\n   200 /api/v1/account-tables/tbl_copy_09 :: {\"code\":0,\"data\":{\"table_id\":\"tbl_copy_09\",\"filename\":\"tbl_copy_09__你是我的仰望-推广账号表\n   200 /api/v1/requests/req_20260902_doujia_07 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260902_doujia_07\",\"batch_id\":\"doujia|2026-\n   200 /api/v1/summary?date=2026-09-02 :: {\"code\":0,\"data\":{\"date\":\"2026-09-02\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260902_doujia_07/commit :: {\"code\":0,\"data\":{\"written_count\":0,\"skipped_count\":4,\"written\":[],\"skipped\":[{\"\n   200 /api/v1/account-tables/tbl_copy_09 :: {\"code\":0,\"data\":{\"table_id\":\"tbl_copy_09\",\"filename\":\"tbl_copy_09__你是我的仰望-推广账号表\n   200 /api/v1/requests/req_20260902_doujia_07 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260902_doujia_07\",\"batch_id\":\"doujia|2026-\n   200 /api/v1/summary?date=2026-09-02 :: {\"code\":0,\"data\":{\"date\":\"2026-09-02\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/parse :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=json :: []\n   200 /api/v1/requests/req_20260903_advance_08/resolutions :: {\"code\":0,\"data\":{\"anomaly_id\":\"anm_02\",\"item_state\":\"NEEDS_REVIEW\",\"still_block\n   200 /api/v1/requests/req_20260903_advance_08 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=json :: [\n  {\n    \"ts\": \"2026-09-17T08:45:54.450129+00:00\",\n    \"request_id\": \"req_20260\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260903_advance_08/resolutions :: {\"code\":0,\"data\":{\"anomaly_id\":\"anm_03\",\"item_state\":\"NEEDS_REVIEW\",\"still_block\n   200 /api/v1/requests/req_20260903_advance_08 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=json :: [\n  {\n    \"ts\": \"2026-09-17T08:45:54.450129+00:00\",\n    \"request_id\": \"req_20260\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260903_advance_08/resolutions :: {\"code\":0,\"data\":{\"anomaly_id\":\"anm_01\",\"item_state\":\"NEEDS_REVIEW\",\"still_block\n   200 /api/v1/requests/req_20260903_advance_08 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=json :: [\n  {\n    \"ts\": \"2026-09-17T08:45:54.450129+00:00\",\n    \"request_id\": \"req_20260\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260903_advance_08/resolutions :: {\"code\":0,\"data\":{\"anomaly_id\":\"anm_01_c15\",\"item_state\":\"READY\",\"still_blocking\n   200 /api/v1/requests/req_20260903_advance_08 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=json :: [\n  {\n    \"ts\": \"2026-09-17T08:45:54.450129+00:00\",\n    \"request_id\": \"req_20260\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   200 /api/v1/requests/req_20260903_advance_08/commit :: {\"code\":0,\"data\":{\"written_count\":5,\"skipped_count\":0,\"written\":[{\"dedup_key\":\"a\n   200 /api/v1/account-tables/tbl_copy_09 :: {\"code\":0,\"data\":{\"table_id\":\"tbl_copy_09\",\"filename\":\"tbl_copy_09__你是我的仰望-推广账号表\n   200 /api/v1/requests/req_20260903_advance_08 :: {\"code\":0,\"data\":{\"request_id\":\"req_20260903_advance_08\",\"batch_id\":\"advance|202\n   200 /api/v1/summary?date=2026-09-03 :: {\"code\":0,\"data\":{\"date\":\"2026-09-03\",\"blocks\":[{\"biz_type\":\"doujia\",\"total_amou\n   201 /api/v1/reports/daily :: {\"code\":0,\"data\":{\"report_id\":\"rep_20260903_04\",\"date\":\"2026-09-03\",\"headline\":\"\n   200 /api/v1/requests/req_20260903_advance_08/decisions?format=csv :: ts,request_id,anomaly_id,rule_id,code,severity,action,original_value,final_value-- 累计运行时异常: []
+
+========== STEP 11 · 刷新页面（首屏干净） ==========
+✓ Done
+-- 状态栏: 已登记账号表测试副本 tbl_copy_10（15 行有效数据，原表只读）。
+-- page errors: (empty)
+-- 计数区: 尚未解析。载入或粘贴申请文本后开始校验。
+  截图: .evidence/16-STEP11-刷新后首屏.png
+  [PASS] STEP11 刷新后状态栏登记
+  [PASS] STEP11 刷新后无 page errors
+
+================================================
+最终结果 PASS=56  FAIL=5
+全程 console: (empty)
+全程 page errors: (empty)
+### 结束 2026-09-17 16:48:21

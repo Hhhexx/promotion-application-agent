@@ -1,0 +1,31 @@
+-- 视口高: 2800  宽: 1600
+-- 文档高: 2800
+✓ Done
+-- 状态栏: 解析失败：响应不是合法 JSON
+-- 解析后命中: [\"BUTTON\",\"BUTTON\",\"BUTTON\"]
+✗ Element not found. Verify the selector is correct and the element exists in the DOM.
+✓ Done
+-- 选中: (none)
+-- 证据首行: null
+✗ Element not found. Verify the selector is correct and the element exists in the DOM.
+✓ Done
+-- 点击命中: [\"BUTTON\",\"BUTTON\",\"BUTTON\"]
+-- toast: <>
+-- resolved-box: <>
+-- 闸门: <>
+-- 网络: 
+No requests captured
+
+### 继续点 override（歧义项）
+✗ Element not found. Verify the selector is correct and the element exists in the DOM.
+✓ Done
+✗ Element not found. Verify the selector is correct and the element exists in the DOM.
+✗ Element not found. Verify the selector is correct and the element exists in the DOM.
+✓ Done
+-- 点击命中: [\"BUTTON\",\"BUTTON\",\"BUTTON\"]
+-- 闸门: <>
+-- resolved-box: <>
+-- 队列未决 P0: 
+-- toast: <>
+-- 网络: 
+No requests captured

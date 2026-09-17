@@ -1,0 +1,881 @@
+openapi: 3.0.3
+info:
+  title: 推广申请处理 Agent API
+  version: 1.0.0
+  description: >
+    推广申请（抖加 / 垫付）解析、异常校验、人工确认闸门、账号表测试副本回填、
+    当日汇总与负责人汇报。所有业务端点统一前缀 /api/v1。
+    统一响应格式：{ code, data, message }，code=0 表示成功，非 0 为错误码。
+    设计依据：docs/02-架构设计.md。
+servers:
+  - url: http://127.0.0.1:8000
+    description: 本地演示态
+
+tags:
+  - name: accounts
+    description: 账号表测试副本管理
+  - name: requests
+    description: 申请文本解析、异常清单、人工裁决与提交写表
+  - name: summary
+    description: 当日抖加 / 垫付汇总
+  - name: reports
+    description: 负责人汇报生成与获取
+
+paths:
+  /api/v1/account-tables:
+    post:
+      tags: [accounts]
+      summary: 上传《推广账号表》测试副本（xlsx）
+      description: >
+        仅接受测试副本。上传后系统在临时目录复制一份用于写入，
+        源表与生产表均不被修改。
+      operationId: uploadAccountTable
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: xlsx 测试副本
+      responses:
+        '201':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AccountTableMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/account-tables/{table_id}:
+    get:
+      tags: [accounts]
+      summary: 获取账号表测试副本元数据与行摘要
+      operationId: getAccountTable
+      parameters:
+        - $ref: '#/components/parameters/TableId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AccountTableDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/requests/parse:
+    post:
+      tags: [requests]
+      summary: 解析申请文本（粘贴文本或上传 txt）并返回解析结果与异常清单
+      description: >
+        规则解析为主干；LLM 为可选旁路（无密钥时自动跳过，功能不降级）。
+        返回解析出的行级申请条目、表级汇总声明、交叉校验结果与分级异常清单。
+        存在 P0 时该请求进入 NEEDS_REVIEW，禁止写表。
+      operationId: parseRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseRequestInput'
+      responses:
+        '200':
+          description: 解析完成（含异常清单）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ParseResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/requests/{request_id}:
+    get:
+      tags: [requests]
+      summary: 获取某请求的解析结果与异常清单（含裁决状态）
+      operationId: getRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ParseResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/requests/{request_id}/resolutions:
+    post:
+      tags: [requests]
+      summary: 对某条异常执行人工裁决（accept / override / ignore）
+      description: >
+        人工确认闸门入口。裁决后系统对该条目重新校验：
+        通过则状态流转 NEEDS_REVIEW → RESOLVED → READY；仍失败则保持 NEEDS_REVIEW。
+      operationId: resolveAnomaly
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolutionInput'
+      responses:
+        '200':
+          description: 裁决已记录并重新校验
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ResolutionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/requests/{request_id}/commit:
+    post:
+      tags: [requests]
+      summary: 确认后将条目写入账号表测试副本（幂等）
+      description: >
+        仅当请求无未裁决 P0 时允许执行；否则返回 409 且不发生任何写入。
+        以 dedup_key 判重：已写入的条目返回 SKIPPED_ALREADY_WRITTEN。
+        「报价」列只读，禁止写入；「是否打款 / 打款人 / 打款日期」需已有人工裁决记录。
+      operationId: commitRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitInput'
+      responses:
+        '200':
+          description: 写入完成（含 written / skipped 明细）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CommitResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 存在未裁决 P0，禁止写表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/summary:
+    get:
+      tags: [summary]
+      summary: 获取当日抖加 / 垫付金额汇总
+      operationId: getDailySummary
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: '2026-09-02'
+        - name: biz_type
+          in: query
+          required: false
+          description: 不传则返回抖加与垫付两类汇总
+          schema:
+            $ref: '#/components/schemas/BizType'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailySummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/reports/daily:
+    post:
+      tags: [reports]
+      summary: 生成负责人汇报
+      operationId: createDailyReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyReportInput'
+      responses:
+        '201':
+          description: 汇报已生成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailyReport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/reports/daily/{report_id}:
+    get:
+      tags: [reports]
+      summary: 获取已生成的负责人汇报
+      operationId: getDailyReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailyReport'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    RequestId:
+      name: request_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: req_20260903_advance_01
+    TableId:
+      name: table_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: tbl_copy_01
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+    Conflict:
+      description: 状态冲突（如含未裁决 P0、重复裁决等）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: 0=成功，非 0=错误码
+          example: 0
+        data:
+          nullable: true
+        message:
+          type: string
+          description: 错误时的人类可读描述
+          example: ''
+
+    BizType:
+      type: string
+      enum: [doujia, advance]
+      description: doujia=抖加申请，advance=垫付申请
+
+    Severity:
+      type: string
+      enum: [P0, P1, P2]
+
+    ItemState:
+      type: string
+      enum: [PARSED, NEEDS_REVIEW, RESOLVED, READY, WRITTEN, SKIPPED_ALREADY_WRITTEN, BLOCKED]
+
+    MatchLevel:
+      type: string
+      enum: [EXACT_ID, EXACT_NAME, AMBIGUOUS, NO_MATCH, WEAK_FUZZY]
+
+    SourceSpan:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+        end:
+          type: integer
+
+    MatchCandidate:
+      type: object
+      required: [row_ref, score]
+      properties:
+        row_ref:
+          type: string
+          description: 账号表中的行标识（行号，1 起）
+          example: '7'
+        douyin_nickname:
+          type: string
+        douyin_id:
+          type: string
+          nullable: true
+        score:
+          type: number
+          format: float
+          description: 相似度 0-1，仅用于候选排序，不用于自动采纳
+          example: 1.0
+
+    MatchResult:
+      type: object
+      required: [level, candidates]
+      properties:
+        level:
+          $ref: '#/components/schemas/MatchLevel'
+        matched_row_ref:
+          type: string
+          nullable: true
+          description: 仅 EXACT_ID / EXACT_NAME 时存在
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchCandidate'
+        note:
+          type: string
+
+    LineItem:
+      type: object
+      required:
+        - line_no
+        - biz_type
+        - blogger_name_raw
+        - blogger_name_norm
+        - amount
+        - payer
+        - request_date
+        - source_span
+        - dedup_key
+        - state
+      properties:
+        line_no:
+          type: integer
+        biz_type:
+          $ref: '#/components/schemas/BizType'
+        blogger_name_raw:
+          type: string
+          example: 葵花夫妇
+        blogger_name_norm:
+          type: string
+          example: 葵花夫妇
+        song_name:
+          type: string
+          nullable: true
+          example: 你是我的仰望
+        amount:
+          type: number
+          format: double
+          description: 货币金额，实现侧用 Decimal 保 2 位
+          example: 500.0
+        split_count:
+          type: integer
+          nullable: true
+          description: 分笔数（仅抖加）
+          example: 3
+        payer:
+          type: string
+          example: 林老师
+        request_date:
+          type: string
+          format: date
+          example: '2026-09-03'
+        source_span:
+          $ref: '#/components/schemas/SourceSpan'
+        dedup_key:
+          type: string
+          example: advance|2026-09-03|葵花夫妇|500.00|林老师
+        match_result:
+          $ref: '#/components/schemas/MatchResult'
+        state:
+          $ref: '#/components/schemas/ItemState'
+
+    ClaimSummary:
+      type: object
+      required: [biz_type, declared_total_amount, declared_date, payer]
+      properties:
+        biz_type:
+          $ref: '#/components/schemas/BizType'
+        declared_total_amount:
+          type: number
+          format: double
+          example: 2250.0
+        declared_date:
+          type: string
+          format: date
+          example: '2026-09-03'
+        declared_count:
+          type: integer
+          nullable: true
+          description: 文本声明的笔数（如「今日共 7 笔」）
+          example: 7
+        declared_merged_count:
+          type: integer
+          nullable: true
+          description: 声明合并同博主后的笔数（仅抖加）
+          example: 4
+        payer:
+          type: string
+          example: 林老师
+        expected_pay_date:
+          type: string
+          format: date
+          nullable: true
+          description: 预计打款日期（仅垫付）
+          example: '2026-08-31'
+
+    Anomaly:
+      type: object
+      required: [anomaly_id, code, severity, message, blocking, resolved]
+      properties:
+        anomaly_id:
+          type: string
+          example: anm_02
+        exc_id:
+          type: string
+          nullable: true
+          description: 对应 PRD 的产品可读编号（EXC-01..EXC-16），便于与 PRD 对齐
+          example: EXC-01
+        code:
+          type: string
+          description: 异常码，见架构文档 §4.1 与 §4.4 的 PRD 映射
+          enum:
+            - TOTAL_MISMATCH
+            - COUNT_MISMATCH
+            - FIELD_MISSING
+            - UNPARSED_LINE
+            - DATE_ORDER_INVALID
+            - DATE_UNRESOLVABLE
+            - DUPLICATE_WITHIN_REQUEST
+            - MATCH_AMBIGUOUS
+            - MATCH_NOT_FOUND
+            - LLM_RULE_CONFLICT
+            - CROSS_SOURCE_TOTAL_MISMATCH
+            - CROSS_SOURCE_FIELD_CONFLICT
+            - CROSS_SOURCE_SCOPE_MISMATCH
+            - MERGED_COUNT_MISMATCH
+            - PAYER_INCONSISTENT
+            - STATUS_FIELD_INCONSISTENT
+            - UNACCEPTED_WITH_AMOUNT
+            - TARGET_CELL_NONEMPTY
+            - DATE_FORMAT_INCONSISTENT
+            - DOUYIN_ID_EMPTY
+            - DOUJIA_EXCEEDS_QUOTE
+            - NICKNAME_DIRTY
+            - SPLIT_NOT_RETAINED
+            - TABLE_EMPTY_ROW_SKIPPED
+            - REMARK_EMPTY
+          example: COUNT_MISMATCH
+        severity:
+          $ref: '#/components/schemas/Severity'
+        blocking:
+          type: boolean
+          description: 是否阻断写表（P0 = true）
+          example: true
+        message:
+          type: string
+          example: 声明「共 7 笔」与明细 5 笔不一致
+        line_no:
+          type: integer
+          nullable: true
+          description: 关联的条目行号（表级异常为 null）
+        target_field:
+          type: string
+          nullable: true
+        suggestion:
+          type: string
+          nullable: true
+          description: 建议值（仅供参考，不自动采纳）
+        resolved:
+          type: boolean
+          example: false
+        resolution:
+          $ref: '#/components/schemas/Resolution'
+
+    CrossCheck:
+      type: object
+      properties:
+        line_items_sum:
+          type: number
+          format: double
+          example: 2250.0
+        declared_total_amount:
+          type: number
+          format: double
+          example: 2250.0
+        split_count_sum:
+          type: integer
+          nullable: true
+          example: 5
+        declared_count:
+          type: integer
+          nullable: true
+          example: 7
+        line_items_len:
+          type: integer
+          example: 5
+        declared_merged_count:
+          type: integer
+          nullable: true
+        expected_pay_date:
+          type: string
+          format: date
+          nullable: true
+        declared_date:
+          type: string
+          format: date
+          example: '2026-09-03'
+
+    ParseRequestInput:
+      type: object
+      required: [raw_text]
+      properties:
+        raw_text:
+          type: string
+          description: 申请文本原文
+        biz_type_hint:
+          $ref: '#/components/schemas/BizType'
+        table_id:
+          type: string
+          nullable: true
+          description: 目标账号表测试副本 id（用于匹配，可选）
+        enable_llm:
+          type: boolean
+          default: false
+          description: 是否启用 LLM 旁路；无密钥时忽略
+
+    ParseResult:
+      type: object
+      required: [request_id, biz_type, summary, line_items, cross_check, anomalies, aggregate_state]
+      properties:
+        request_id:
+          type: string
+          example: req_20260903_advance_01
+        batch_id:
+          type: string
+          description: 批次级幂等键 = biz_type|request_date_iso
+          example: advance|2026-09-03
+        biz_type:
+          $ref: '#/components/schemas/BizType'
+        request_date:
+          type: string
+          format: date
+        summary:
+          $ref: '#/components/schemas/ClaimSummary'
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineItem'
+        cross_check:
+          $ref: '#/components/schemas/CrossCheck'
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Anomaly'
+        aggregate_state:
+          $ref: '#/components/schemas/ItemState'
+        llm_used:
+          type: boolean
+          default: false
+
+    ResolutionInput:
+      type: object
+      required: [anomaly_id, decision, operator]
+      properties:
+        anomaly_id:
+          type: string
+          example: anm_02
+        decision:
+          type: string
+          enum: [accept, override, ignore]
+          description: accept=采纳建议；override=填修正值；ignore=忽略该条异常
+        override_value:
+          nullable: true
+          description: decision=override 时必填
+        operator:
+          type: string
+          description: 确认人标识
+          example: 林老师
+        note:
+          type: string
+          nullable: true
+
+    Resolution:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [accept, override, ignore]
+        operator:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+
+    ResolutionResult:
+      type: object
+      required: [anomaly_id, item_state, still_blocking]
+      properties:
+        anomaly_id:
+          type: string
+        item_state:
+          $ref: '#/components/schemas/ItemState'
+        still_blocking:
+          type: boolean
+          description: 裁决后重新校验是否仍存在阻断项
+        remaining_p0_count:
+          type: integer
+          example: 1
+
+    CommitInput:
+      type: object
+      required: [table_id]
+      properties:
+        table_id:
+          type: string
+        confirm_token:
+          type: string
+          nullable: true
+          description: 若后端启用二次确认，需回传该令牌
+
+    CommitResult:
+      type: object
+      required: [written_count, skipped_count, written, skipped]
+      properties:
+        written_count:
+          type: integer
+          example: 5
+        skipped_count:
+          type: integer
+          example: 0
+        written:
+          type: array
+          items:
+            $ref: '#/components/schemas/WrittenEntry'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkippedEntry'
+
+    WrittenEntry:
+      type: object
+      required: [dedup_key, row_ref, fields_written]
+      properties:
+        dedup_key:
+          type: string
+        row_ref:
+          type: string
+        fields_written:
+          type: object
+          additionalProperties: true
+          description: 实际写入的字段键值（key 为账号表英文字段键）
+
+    SkippedEntry:
+      type: object
+      required: [dedup_key, reason]
+      properties:
+        dedup_key:
+          type: string
+        reason:
+          type: string
+          enum: [SKIPPED_ALREADY_WRITTEN, TARGET_CELL_NONEMPTY, NOT_READY]
+
+    SummaryBlock:
+      type: object
+      required: [biz_type, total_amount, entry_count]
+      properties:
+        biz_type:
+          $ref: '#/components/schemas/BizType'
+        total_amount:
+          type: number
+          format: double
+          example: 700.0
+        entry_count:
+          type: integer
+          example: 4
+
+    DailySummary:
+      type: object
+      required: [date, blocks]
+      properties:
+        date:
+          type: string
+          format: date
+          example: '2026-09-02'
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryBlock'
+
+    DailyReportInput:
+      type: object
+      required: [date]
+      properties:
+        date:
+          type: string
+          format: date
+          example: '2026-09-03'
+        include_unresolved:
+          type: boolean
+          default: true
+          description: 是否在汇报中列出待人工确认项
+
+    DailyReport:
+      type: object
+      required: [report_id, date, doujia_total, advance_total, anomaly_count, pending_review_count, markdown]
+      properties:
+        report_id:
+          type: string
+          example: rep_20260903_01
+        date:
+          type: string
+          format: date
+        doujia_total:
+          type: number
+          format: double
+          example: 700.0
+        advance_total:
+          type: number
+          format: double
+          example: 2250.0
+        anomaly_count:
+          type: integer
+          example: 2
+        pending_review_count:
+          type: integer
+          example: 2
+        anomalies_summary:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              severity:
+                $ref: '#/components/schemas/Severity'
+              message:
+                type: string
+        markdown:
+          type: string
+          description: 面向负责人的简短汇报（Markdown）
+
+    AccountTableMeta:
+      type: object
+      required: [table_id, filename, row_count, is_test_copy]
+      properties:
+        table_id:
+          type: string
+          example: tbl_copy_01
+        filename:
+          type: string
+          example: 推广账号表_测试副本.xlsx
+        row_count:
+          type: integer
+          example: 16
+        is_test_copy:
+          type: boolean
+          example: true
+
+    AccountTableDetail:
+      allOf:
+        - $ref: '#/components/schemas/AccountTableMeta'
+        - type: object
+          properties:
+            columns:
+              type: array
+              items:
+                type: string
+              example:
+                - 类型
+                - 抖音昵称
+                - 抖音号
+                - 报价
+                - 抖加
+                - 抖加支付人
+                - 是否打款
+                - 打款人
+                - 打款日期
+                - 发布日期
+                - 是否接单
+                - 审核结果
+                - 备注
+            rows:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
