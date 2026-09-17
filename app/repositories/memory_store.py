@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 
 from app.domain.models import (
@@ -44,6 +45,10 @@ class MemoryStore:
     decisions: dict[str, Resolution] = field(default_factory=dict)
     decision_log: list[dict] = field(default_factory=list)
     counters: dict[str, int] = field(default_factory=dict)
+    #: 本次进程会话标识。落盘 JSONL 的每条记录都会带上它（**仅供长期审计分档**，
+    #: 不进入对外 CSV 的锁定列）。`request_id` 的自增序号跨会话会撞号，凭它可以区分
+    #: 「同名 request_id」到底属于哪一次会话。
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     # ------------------------------------------------------------- 表
     def put_table(self, record: TableRecord) -> None:
@@ -136,6 +141,8 @@ class MemoryStore:
         self.decisions.clear()
         self.decision_log.clear()
         self.counters.clear()
+        # 新会话换新标识：旧落盘记录据此与新会话区分（不改写历史 JSONL）。
+        self.session_id = uuid.uuid4().hex
 
 
 #: 进程级单例（演示态；测试通过 fixture 调用 `reset()`）。

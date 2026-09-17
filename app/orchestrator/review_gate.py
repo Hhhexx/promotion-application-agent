@@ -174,7 +174,9 @@ def apply_resolution(
     if anomaly.line_no is not None:
         entry["reason"] = f"line:{anomaly.line_no}|{entry['reason']}"
     store.append_log(entry)
-    decision_repo.append_entry(entry)
+    # 落盘 JSONL 额外带 session_id：request_id 的自增序号跨会话撞号时，
+    # 审计侧可据此区分同名记录归属（只落盘，不进对外 CSV 的锁定列）。
+    decision_repo.append_entry({**entry, "session_id": store.session_id})
 
     state = apply_item_states(result)
     return ResolutionResult(
